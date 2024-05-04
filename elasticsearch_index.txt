@@ -1,0 +1,142 @@
+PUT _index_template/zabbix_events 
+{
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": "true",
+      "dynamic_templates": [],
+      "date_detection": false,
+      "properties": {
+        "trigger_id": {
+          "type": "long"
+        },
+        "event_severity": {
+          "type": "keyword"
+        },
+        "event_source": {
+          "type": "long"
+        },
+        "event_update_date": {
+          "type": "text"
+        },
+        "event_opdata": {
+          "type": "text"
+        },
+        "event_update_severity": {
+          "type": "keyword"
+        },
+        "host_group": {
+          "type": "text"
+        },
+        "event_recovery_status": {
+          "type": "keyword"
+        },
+        "event_recovery_date": {
+          "type": "text"
+        },
+        "event_date": {
+          "type": "text"
+        },
+        "event_update_action": {
+          "type": "text"
+        },
+        "tag": {
+          "type": "object",
+          "properties": {
+            "environment": {
+              "type": "keyword"
+            },
+            "customer": {
+              "type": "keyword"
+            }
+          }
+        },
+        "event_update_nseverity": {
+          "type": "long"
+        },
+        "event_status": {
+          "type": "keyword"
+        },
+        "event_update_user": {
+          "type": "text"
+        },
+        "host_ip": {
+          "type": "ip",
+          "null_value": "0.0.0.0"
+        },
+        "event_sourcetext": {
+          "type": "keyword"
+        },
+        "event_update_time": {
+          "type": "text"
+        },
+        "event_update_message": {
+          "type": "text"
+        },
+        "event_duration": {
+          "type": "text"
+        },
+        "event_recovery_id": {
+          "type": "long"
+        },
+        "event_ack_status": {
+          "type": "keyword"
+        },
+        "@timestamp": {
+          "type": "date"
+        },
+        "event_durationsec": {
+          "coerce": true,
+          "ignore_malformed": false,
+          "type": "long"
+        },
+        "event_id": {
+          "coerce": true,
+          "ignore_malformed": false,
+          "type": "long"
+        },
+        "event_recovery_value": {
+          "type": "long"
+        },
+        "event_name": {
+          "type": "text"
+        },
+        "event_udpate_status": {
+          "type": "long"
+        },
+        "event_recovery_name": {
+          "type": "text"
+        },
+        "event_recovery_time": {
+          "type": "text"
+        },
+        "event_value": {
+          "type": "long"
+        },
+        "event_age": {
+          "type": "text"
+        },
+        "event_time": {
+          "type": "text"
+        },
+        "event_update_status": {
+          "type": "long"
+        },
+        "host_name": {
+          "type": "text"
+        },
+        "event_nseverity": {
+          "type": "long"
+        },
+        "trigger_description": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "index_patterns": [
+    "zabbix_events*"
+  ],
+  "composed_of": [],
+  "allow_auto_create": true
+}
