@@ -1,0 +1,23 @@
+POST /_security/api_key
+{
+  "name": "zabbix",
+  "role_descriptors": {
+    "zabbix_writer": {
+      "cluster": [
+        "monitor","read_ilm"
+      ],
+      "indices": [
+        {
+          "names": [
+            "zabbix_events_test"
+          ],
+          "privileges": [
+            "auto_configure",
+            "create_doc",
+            "create_index"
+          ]
+        }
+      ]
+    }
+  }
+}
