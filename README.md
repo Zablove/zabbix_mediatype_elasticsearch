@@ -22,14 +22,12 @@ This mediatype allows sending trigger actions to Elasticsearch. It gathers as mu
 
 3. Add a separate user to Zabbix (for example, Elasticsearch).
    - Give the user at least read rights to all groups.
+>Note: Make sure the user is member of a group that has read rights to all hostgroups and also when new groups added to Zabbix, this user has read rights.
 
 4. Add the Elasticsearch Mediatype to the user (Send To Elastic).
 
 5. Add Trigger action:
    - **Name**: Elastic
-   - **Trigger condition**: Trigger severity is greater than or equals Not classified.
    - **Operations**: Send message to user Elastic via Elasticsearch.
    - **Recovery operations**: Notify all involved.
    - **Update operations**: Notify all involved.
-
-
