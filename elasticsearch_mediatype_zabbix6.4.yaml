@@ -1,0 +1,314 @@
+zabbix_export:
+  version: '6.4'
+  media_types:
+    - name: Elasticsearch
+      type: WEBHOOK
+      parameters:
+        - name: elastic_apikey
+        - name: elastic_index
+          value: zabbix_events
+        - name: elastic_url
+          value: 'http://elasticsearch:9200/'
+        - name: event_ack_status
+          value: '{EVENT.ACK.STATUS}'
+        - name: event_age
+          value: '{EVENT.AGE}'
+        - name: event_date
+          value: '{EVENT.DATE}'
+        - name: event_duration
+          value: '{EVENT.DURATION}'
+        - name: event_id
+          value: '{EVENT.ID}'
+        - name: event_name
+          value: '{EVENT.NAME}'
+        - name: event_nseverity
+          value: '{EVENT.NSEVERITY}'
+        - name: event_opdata
+          value: '{EVENT.OPDATA}'
+        - name: event_recovery_date
+          value: '{EVENT.RECOVERY.DATE}'
+        - name: event_recovery_id
+          value: '{EVENT.RECOVERY.ID}'
+        - name: event_recovery_name
+          value: '{EVENT.RECOVERY.NAME}'
+        - name: event_recovery_status
+          value: '{EVENT.RECOVERY.STATUS}'
+        - name: event_recovery_time
+          value: '{EVENT.RECOVERY.TIME}'
+        - name: event_recovery_value
+          value: '{EVENT.RECOVERY.VALUE}'
+        - name: event_severity
+          value: '{EVENT.SEVERITY}'
+        - name: event_source
+          value: '{EVENT.SOURCE}'
+        - name: event_status
+          value: '{EVENT.STATUS}'
+        - name: event_tags
+          value: '{EVENT.TAGSJSON}'
+        - name: event_time
+          value: '{EVENT.TIME}'
+        - name: event_udpate_status
+          value: '{EVENT.UPDATE.STATUS}'
+        - name: event_update_action
+          value: '{EVENT.UPDATE.ACTION}'
+        - name: event_update_date
+          value: '{EVENT.UPDATE.DATE}'
+        - name: event_update_message
+          value: '{EVENT.UPDATE.MESSAGE}'
+        - name: event_update_nseverity
+          value: '{EVENT.UPDATE.NSEVERITY}'
+        - name: event_update_severity
+          value: '{EVENT.UPDATE.SEVERITY}'
+        - name: event_update_time
+          value: '{EVENT.UPDATE.TIME}'
+        - name: event_update_user
+          value: '{USER.FULLNAME}'
+        - name: event_value
+          value: '{EVENT.VALUE}'
+        - name: host_group
+          value: '{TRIGGER.HOSTGROUP.NAME}'
+        - name: host_ip
+          value: '{HOST.IP}'
+        - name: host_name
+          value: '{HOST.NAME}'
+        - name: trigger_description
+          value: '{TRIGGER.DESCRIPTION}'
+        - name: trigger_id
+          value: '{TRIGGER.ID}'
+        - name: zabbix_url
+          value: 'https://your.zabbix.url'
+      script: |
+        var body = {
+        };
+        
+        //Function to filter non-empty keys, keys starting with elastic_ and filter values start/ending with {}
+        function printObject(obj, indent) {
+          for (var key in obj) {
+            if (obj.hasOwnProperty(key)) {
+              if (!key.startsWith("elastic_") && key !== "event_tags" && obj[key] !== "" && !/^{.*}$/.test(obj[key])) {
+                body[indent + key] = obj[key];
+                console.log("Opt2: " + indent + key + ": " + obj[key]);
+              }
+            }
+          }
+        }
+        
+        //Function to convert numeric eventsource to text
+        function EventSourceText(eventsource) {
+          switch(eventsource) {
+            case 0:
+              eventSourceText = "Trigger";
+              break;
+            case 1:
+              eventSourceText = "Discovery";
+              break;
+            case 2:
+              eventSourceText = "Autoregistration";
+              break;
+            default:
+              eventSourceText = "Internal";
+          }
+          return eventSourceText;
+        }
+        
+        //Function to convert event duration to seconds
+        //Makes duration searches possible in Elastic
+        function convertDurationToSeconds(duration) {
+        const regex = /(\d+)([smhdwMy])/g;
+        totalSeconds = 0;
+        while ((match = regex.exec(duration)) !== null) {
+          const value = parseInt(match[1]);
+          const unit = match[2];
+          switch (unit) {
+            case 's':
+              totalSeconds += value;
+              break;
+            case 'm':
+              totalSeconds += value * 60;
+              break;
+            case 'h':
+              totalSeconds += value * 3600;
+              break;
+            case 'd':
+              totalSeconds += value * 86400;
+              break;
+            case 'w':
+              totalSeconds += value * 604800;
+              break;
+            case 'M':
+              totalSeconds += value * 2592000;
+              break;
+            case 'y':
+              totalSeconds += value * 31536000;
+              break;
+            default:
+              // Ignore unknown units
+              break;
+            }
+          }
+          return totalSeconds;
+        }
+        
+        try {
+          //parse json values
+          var params = JSON.parse(value);
+          printObject(params, "");
+        
+          //Iterate over all tags and add them to Elastic
+          //hese tags will be parsed to Elastic, make sure to add all tag names to the
+          //index template in Elasticsearch to make them searchable
+          if (params.event_tags !== '{EVENT.TAGSJSON}') {
+            var eventTags = JSON.parse(params.event_tags);
+            for (var i = 0; i < eventTags.length; i++) {
+              body["tag." + eventTags[i].tag] = eventTags[i].value;
+            }
+          }
+        
+          //Add current timestamp
+          body["@timestamp"] = Date.now();
+        
+          //Add event.durationsec in seconds
+          body["event.durationsec"] = convertDurationToSeconds(params.event_duration);
+        
+          //Add event.sourcetext
+          body["event.sourcetext"] = EventSourceText(params.event_source);
+        
+          //Check for an IP and set to 0.0.0.0 if host has no valid IP because Elastic requires IP
+          if (body && (!body["host_ip"] || !/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(body["host_ip"]))) {
+            body["host_ip"] = "0.0.0.0";
+          }
+        
+          //Create URL of the trigger
+          body["zabbix_url"] = (params.zabbix_url + '/tr_events.php?triggerid=' + params.trigger_id + '&eventid=' + params.event_id);
+        
+          // Send the request to Elasticsearch
+          var req = new HttpRequest();
+          req.addHeader('Content-Type: application/json');
+        
+          //Add ApiKey to request, if API key not needed, simply don't add it.
+            req.addHeader('Authorization: ApiKey ' + params.elastic_apikey);
+        
+          //Get the response from Elastic
+          var resp = req.post(params.elastic_url + params.elastic_index + '/_doc', JSON.stringify(body)),
+          data = JSON.parse(resp);
+        
+          //Enable line below for debugging
+          //Zabbix.Log(4, '[ Elastic Webhook ] Response: ' + resp);
+        
+          //Check if the response is between 200 and 300 and has data._id as result
+          if (req.getStatus() >= 200 && req.getStatus() < 300 && data._id) {
+            return data._id;
+          } 
+          else {
+            var message = ((typeof data.message === 'string') ? data.message : 'Error');
+            Zabbix.Log(3, '[ Elastic Webhook ] FAILED with responsecode: ' + req.getStatus());
+            throw message + '. For more details check Zabbix server log.';
+          }
+        
+        }
+        
+        
+        
+        catch (error) {
+          Zabbix.log(3, '[ Elastic Webhook ] ERROR: ' + error);
+          throw 'Sending failed: ' + error;
+        }
+      timeout: 4s
+      description: |
+        v1.0 By Zablove
+        
+        Mediatype to send trigger actions to Elasticsearch.
+        
+        If your Elasticsearch cluster needs authentication, create an API key first and add it to the parameters.
+        Change at least these parameters according to your environment:
+        elastic_url (URL of your Elastic instance)
+        zabbix_url (URL of your Zabbix instance so you have a direct URL to your trigger in Elasticsearch)
+        
+        Note: This version is tested on Zabbix 6.4
+      message_templates:
+        - event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: 'Problem: {EVENT.NAME}'
+          message: |
+            Problem started at {EVENT.TIME} on {EVENT.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Operational data: {EVENT.OPDATA}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: 'Resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Problem has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: UPDATE
+          subject: 'Updated problem in {EVENT.AGE}: {EVENT.NAME}'
+          message: |
+            {USER.FULLNAME} {EVENT.UPDATE.ACTION} problem at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            {EVENT.UPDATE.MESSAGE}
+            
+            Current problem status is {EVENT.STATUS}, age is {EVENT.AGE}, acknowledged: {EVENT.ACK.STATUS}.
+        - event_source: DISCOVERY
+          operation_mode: PROBLEM
+          subject: 'Discovery: {DISCOVERY.DEVICE.STATUS} {DISCOVERY.DEVICE.IPADDRESS}'
+          message: |
+            Discovery rule: {DISCOVERY.RULE.NAME}
+            
+            Device IP: {DISCOVERY.DEVICE.IPADDRESS}
+            Device DNS: {DISCOVERY.DEVICE.DNS}
+            Device status: {DISCOVERY.DEVICE.STATUS}
+            Device uptime: {DISCOVERY.DEVICE.UPTIME}
+            
+            Device service name: {DISCOVERY.SERVICE.NAME}
+            Device service port: {DISCOVERY.SERVICE.PORT}
+            Device service status: {DISCOVERY.SERVICE.STATUS}
+            Device service uptime: {DISCOVERY.SERVICE.UPTIME}
+        - event_source: AUTOREGISTRATION
+          operation_mode: PROBLEM
+          subject: 'Autoregistration: {HOST.HOST}'
+          message: |
+            Host name: {HOST.HOST}
+            Host IP: {HOST.IP}
+            Agent port: {HOST.PORT}
+        - event_source: INTERNAL
+          operation_mode: PROBLEM
+          subject: 'Internal problem'
+        - event_source: SERVICE
+          operation_mode: PROBLEM
+          subject: 'Service "{SERVICE.NAME}" problem: {EVENT.NAME}'
+          message: |
+            Service problem started at {EVENT.TIME} on {EVENT.DATE}
+            Service problem name: {EVENT.NAME}
+            Service: {SERVICE.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            Service description: {SERVICE.DESCRIPTION}
+            
+            {SERVICE.ROOTCAUSE}
+        - event_source: SERVICE
+          operation_mode: RECOVERY
+          subject: 'Service "{SERVICE.NAME}" resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Service "{SERVICE.NAME}" has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            Service description: {SERVICE.DESCRIPTION}
+        - event_source: SERVICE
+          operation_mode: UPDATE
+          subject: 'Changed "{SERVICE.NAME}" service status to {EVENT.UPDATE.SEVERITY} in {EVENT.AGE}'
+          message: |
+            Changed "{SERVICE.NAME}" service status to {EVENT.UPDATE.SEVERITY} at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            Current problem age is {EVENT.AGE}.
+            Service description: {SERVICE.DESCRIPTION}
+            
+            {SERVICE.ROOTCAUSE}
